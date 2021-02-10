@@ -1,7 +1,5 @@
 #![allow(unused)]
 
-// 同步接口
-
 struct App {
     handlers: Vec<Box<dyn Handler>>,
 }
@@ -20,6 +18,7 @@ impl App {
 
 trait Handler {}
 impl<F> Handler for F where F: Fn() -> () {}
+impl<F> Handler for F where F: Fn(String) -> () {}
 
 #[test]
 fn test_add_handlers() {
