@@ -25,51 +25,45 @@ impl App {
 }
 
 /// 要求 T 可解析
+type FromRequestError = Box<dyn Error>;
+
 trait FromRequest: Sized {
-    type Error;
-    fn from_request(req: &str) -> Result<Self, Self::Error>;
+    fn from_request(req: &str) -> Result<Self, FromRequestError>;
 }
 impl FromRequest for () {
-    type Error = ();
-    fn from_request(req: &str) -> Result<Self, Self::Error> {
+    fn from_request(req: &str) -> Result<Self, FromRequestError> {
         Ok(())
     }
 }
 impl FromRequest for String {
-    type Error = ();
-    fn from_request(req: &str) -> Result<Self, Self::Error> {
+    fn from_request(req: &str) -> Result<Self, FromRequestError> {
         Ok(req.to_string())
     }
 }
 impl FromRequest for u32 {
-    type Error = ParseIntError;
-    fn from_request(req: &str) -> Result<Self, Self::Error> {
-        req.parse()
+    fn from_request(req: &str) -> Result<Self, FromRequestError> {
+        Ok(req.parse()?)
     }
 }
 impl FromRequest for u64 {
-    type Error = ParseIntError;
-    fn from_request(req: &str) -> Result<Self, Self::Error> {
-        req.parse()
+    fn from_request(req: &str) -> Result<Self, FromRequestError> {
+        Ok(req.parse()?)
     }
 }
-impl<T1, E> FromRequest for (T1,)
+impl<T1> FromRequest for (T1,)
 where
-    T1: FromRequest<Error = E>,
+    T1: FromRequest,
 {
-    type Error = E;
-    fn from_request(req: &str) -> Result<Self, Self::Error> {
-        T1::from_request(req).map(|t| (t,))
+    fn from_request(req: &str) -> Result<Self, FromRequestError> {
+        Ok((T1::from_request(req)?,))
     }
 }
-impl<T1, T2, E> FromRequest for (T1, T2)
+impl<T1, T2> FromRequest for (T1, T2)
 where
-    T1: FromRequest<Error = E>,
-    T2: FromRequest<Error = E>,
-    E: Error,
+    T1: FromRequest,
+    T2: FromRequest,
 {
-    type Error = E;
-    fn from_request(req: &str) -> Result<Self, Self::Error> {
+    fn from_request(req: &str) -> Result<Self, FromRequestError> {
         Ok((T1::from_request(req)?, T2::from_request(req)?))
     }
 }
@@ -164,11 +158,16 @@ async fn test_add_handlers() {
         eprintln!("[3] print from three: n1 = {}, n2 = {}", n1, n2);
     }
 
+    async fn mixed(s: String, n: u64) {
+        eprintln!("[4] print from mixed: s = {}, n = {}", s, n);
+    }
+
     let app = App::new()
         .handler(none)
         .handler(one)
         .handler(two)
-        .handler(three);
-    app.dispatch("12345".to_string()).await;
-    app.dispatch("12a345".to_string()).await;
+        .handler(three)
+        .handler(mixed);
+    app.dispatch("3333".to_string()).await;
+    app.dispatch("333a3".to_string()).await;
 }
