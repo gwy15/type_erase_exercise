@@ -1,4 +1,4 @@
-use std::{future::Future, marker::PhantomData, pin::Pin};
+use std::{error::Error, future::Future, marker::PhantomData, num::ParseIntError, pin::Pin};
 
 struct App {
     // handlers: Vec<Box<dyn Handler>>,
@@ -25,44 +25,52 @@ impl App {
 }
 
 /// 要求 T 可解析
-trait FromRequest {
-    fn from_request(req: &str) -> Self;
+trait FromRequest: Sized {
+    type Error;
+    fn from_request(req: &str) -> Result<Self, Self::Error>;
 }
 impl FromRequest for () {
-    fn from_request(req: &str) -> Self {
-        ()
+    type Error = ();
+    fn from_request(req: &str) -> Result<Self, Self::Error> {
+        Ok(())
     }
 }
 impl FromRequest for String {
-    fn from_request(req: &str) -> Self {
-        req.to_string()
+    type Error = ();
+    fn from_request(req: &str) -> Result<Self, Self::Error> {
+        Ok(req.to_string())
     }
 }
 impl FromRequest for u32 {
-    fn from_request(req: &str) -> Self {
-        req.parse().unwrap()
+    type Error = ParseIntError;
+    fn from_request(req: &str) -> Result<Self, Self::Error> {
+        req.parse()
     }
 }
 impl FromRequest for u64 {
-    fn from_request(req: &str) -> Self {
-        req.parse().unwrap()
+    type Error = ParseIntError;
+    fn from_request(req: &str) -> Result<Self, Self::Error> {
+        req.parse()
     }
 }
-impl<T1> FromRequest for (T1,)
+impl<T1, E> FromRequest for (T1,)
 where
-    T1: FromRequest,
+    T1: FromRequest<Error = E>,
 {
-    fn from_request(req: &str) -> Self {
-        (T1::from_request(req),)
+    type Error = E;
+    fn from_request(req: &str) -> Result<Self, Self::Error> {
+        T1::from_request(req).map(|t| (t,))
     }
 }
-impl<T1, T2> FromRequest for (T1, T2)
+impl<T1, T2, E> FromRequest for (T1, T2)
 where
-    T1: FromRequest,
-    T2: FromRequest,
+    T1: FromRequest<Error = E>,
+    T2: FromRequest<Error = E>,
+    E: Error,
 {
-    fn from_request(req: &str) -> Self {
-        (T1::from_request(req), T2::from_request(req))
+    type Error = E;
+    fn from_request(req: &str) -> Result<Self, Self::Error> {
+        Ok((T1::from_request(req)?, T2::from_request(req)?))
     }
 }
 
@@ -129,25 +137,38 @@ where
     R: Future<Output = ()>,
 {
     fn handle_request(&self, req: &str) -> Pin<Box<dyn Future<Output = ()>>> {
-        let params = T::from_request(req);
-        let f = self.f.clone();
-        Box::pin(async move { f.call(params).await })
+        if let Ok(params) = T::from_request(req) {
+            let f = self.f.clone();
+            Box::pin(async move { f.call(params).await })
+        } else {
+            Box::pin(async {})
+        }
     }
 }
 
 #[tokio::test]
 async fn test_add_handlers() {
     async fn none() {
-        eprintln!("print from none");
+        eprintln!("[0] print from none");
     }
 
     async fn one(s: String) {
-        eprintln!("print from one: s = {}", s);
+        eprintln!("[1] print from one: s = {}", s);
     }
 
     async fn two(n1: u32, n2: u64) {
-        eprintln!("print from two: n1 = {}, n2 = {}", n1, n2);
+        eprintln!("[2] print from two: n1 = {}, n2 = {}", n1, n2);
     }
-    let app = App::new().handler(none).handler(one).handler(two);
-    app.dispatch("1234".to_string()).await;
+
+    async fn three(n1: u32, n2: u64) {
+        eprintln!("[3] print from three: n1 = {}, n2 = {}", n1, n2);
+    }
+
+    let app = App::new()
+        .handler(none)
+        .handler(one)
+        .handler(two)
+        .handler(three);
+    app.dispatch("12345".to_string()).await;
+    app.dispatch("12a345".to_string()).await;
 }

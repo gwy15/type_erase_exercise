@@ -128,15 +128,15 @@ where
 #[test]
 fn test_add_handlers() {
     fn none() {
-        println!("print from none");
+        eprintln!("print from none");
     }
 
     fn one(s: String) {
-        println!("print from one: s = {}", s);
+        eprintln!("print from one: s = {}", s);
     }
 
     fn two(n1: u32, n2: u64) {
-        println!("print from two: n1 = {}, n2 = {}", n1, n2);
+        eprintln!("print from two: n1 = {}, n2 = {}", n1, n2);
     }
 
     let app = App::new().handler(none).handler(one).handler(two);
